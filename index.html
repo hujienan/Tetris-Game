@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tetris Game</title>
+    <style>
+      h1 {
+        text-align: center;
+      }
+      #container {
+        width: 400px;
+        margin: 0 auto;
+      }
+      #scoreLine {
+        font-size: 1.2rem;
+      }
+      #gameTable {
+        border: 1px solid grey;
+        width: 100%;
+        height: 700px;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <h1>Tetris Game</h1>
+      <div id="container">
+        <p id="scoreLine">Score: <span id="score"></span></p>
+        <table id="gameTable"></table>
+      </div>
+    </div>
+    <script>
+      // paint
+      // 100000000001
+      // 111111111111
+      // map is an array of 24 numbers, the first 23 numbers' value is 0x801, the last number's value is 0xfff
+      // 0x801 is 100000000001 in binary
+      // 0xfff is 111111111111 in binary
+      let map = Array(23).fill(0x801);
+      map.push(0xfff);
+      const gameTable = document.getElementById("gameTable");
+      const paintTable = () => {
+        for (let i = 0; i < 23; i++) {
+          const tr = document.createElement("tr");
+          for (let j = 0; j < 10; j++) {
+            const td = document.createElement("td");
+            td.style.background = "grey";
+            tr.appendChild(td);
+          }
+          gameTable.appendChild(tr);
+        }
+      };
+
+      paintTable();
+
+      let trs = document.getElementsByTagName("tr");
+      const rePaintTable = () => {
+        for (let i = 0; i < 23; i++) {
+          let strArr = map[i].toString(2).slice(1, -1).split("");
+          let tds = trs[i].children;
+          for (let j = 0; j < 10; j++) {
+            if (strArr[j] === "1") {
+              tds[j].style.background = "black";
+            } else {
+              tds[j].style.background = "grey";
+            }
+          }
+        }
+      };
+
+      // hex for the shapes of tetromino  eg. 0x6600 is 0110011000000000 in binary 4*4
+      const tetris = [
+        [0x6600],
+        [0x2222, 0xf00],
+        [0xc600, 0x2640],
+        [0x6c00, 0x4620],
+        [0x4460, 0x2e0, 0x6220, 0x740],
+        [0x2260, 0xe20, 0x6440, 0x4700],
+        [0x2620, 0x720, 0x2320, 0x2700],
+      ];
+
+      let currentTetrominoShape, currentShapeIndex, currentTetromino;
+      let score = 0;
+      const scoreEle = document.getElementById("score");
+      // set score
+      const setScore = () => {
+        scoreEle.innerText = score;
+      };
+      setScore();
+      const generateTetromino = () => {
+        currentTetrominoShape = tetris[Math.floor(Math.random() * 7)];
+        currentShapeIndex = Math.floor(
+          Math.random() * currentTetrominoShape.length
+        );
+        // calculate lines
+        let lines = [];
+        let x = 4;
+        let y = 0;
+
+        for (let i = 0; i < 4; i++) {
+          lines[i] =
+            ((currentTetrominoShape[currentShapeIndex] >> (12 - i * 4)) &
+              0xf) <<
+            (8 - x);
+        }
+
+        currentTetromino = {
+          lines,
+          x,
+          y,
+          obj: currentTetrominoShape[currentShapeIndex],
+        };
+        // check game over
+        if (checkCollision()) {
+          // clear current tetromino
+          currentTetromino = null;
+          // stop timer
+          clearInterval(timer);
+          alert("Game Over!");
+          return;
+        }
+        // merge into map
+        mergeIntoMap();
+        rePaintTable();
+      };
+
+      // merge current tetromino into map
+      const mergeIntoMap = () => {
+        for (let i = 0; i < 4; i++) {
+          map[currentTetromino.y + i] |= currentTetromino.lines[i];
+        }
+      };
+
+      const rotate = () => {
+        if (currentTetromino) {
+          // copy from lines
+          let linesArrCopy = [...currentTetromino.lines];
+          currentShapeIndex =
+            (currentShapeIndex + 1) % currentTetrominoShape.length;
+          currentTetromino.obj = currentTetrominoShape[currentShapeIndex];
+          // clear old tetromino
+          for (let i = 0; i < 4; i++) {
+            map[currentTetromino.y + i] ^= linesArrCopy[i];
+          }
+          let collision = false;
+          // set lines
+          for (let i = 0; i < 4; i++) {
+            currentTetromino.lines[i] =
+              ((currentTetromino.obj >> (12 - i * 4)) & 0xf) <<
+              (8 - currentTetromino.x);
+            if (
+              !collision &&
+              (map[currentTetromino.y + i] & currentTetromino.lines[i]) !== 0
+            ) {
+              collision = true;
+            }
+          }
+          // if collision, restore
+          if (collision) {
+            currentShapeIndex =
+              (currentShapeIndex - 1 + currentTetrominoShape.length) %
+              currentTetrominoShape.length;
+            currentTetromino.obj = currentTetrominoShape[currentShapeIndex];
+            currentTetromino.lines = linesArrCopy;
+          }
+          // check game over
+          // merge into map
+          mergeIntoMap();
+          if (!collision) {
+            rePaintTable();
+          }
+        }
+      };
+
+      // clear old tetromino
+      const clearOldTetromino = () => {
+        for (let i = 0; i < 4; i++) {
+          map[currentTetromino.y + i] ^= currentTetromino.lines[i];
+        }
+      };
+
+      // check collision
+      const checkCollision = () => {
+        let collision = false;
+        for (let i = 0; i < 4; i++) {
+          if (
+            !collision &&
+            (map[currentTetromino.y + i] & currentTetromino.lines[i]) !== 0
+          ) {
+            collision = true;
+            break;
+          }
+        }
+        return collision;
+      };
+      // move down
+      const moveDown = () => {
+        if (currentTetromino) {
+          // clear old tetromino
+          clearOldTetromino();
+          // move down
+          currentTetromino.y++;
+          // check collision
+          let collision = checkCollision();
+          // if collision, restore
+          if (collision) {
+            currentTetromino.y--;
+            // restore
+            for (let i = 0; i < 4; i++) {
+              map[currentTetromino.y + i] |= currentTetromino.lines[i];
+            }
+            // if there is a full line, clear it
+            for (let i = 0; i < 4; i++) {
+              if (
+                currentTetromino.y + i < 23 &&
+                map[currentTetromino.y + i] === 0xfff
+              ) {
+                map.splice(currentTetromino.y + i, 1);
+                map.unshift(0x801);
+                score += 10;
+                setScore();
+              }
+            }
+            generateTetromino();
+            return;
+          }
+          // merge into map
+          mergeIntoMap();
+          rePaintTable();
+        }
+      };
+      // move left
+      const moveLeft = () => {
+        if (currentTetromino) {
+          // copy from lines
+          let linesArrCopy = [...currentTetromino.lines];
+          // clear old tetromino
+          clearOldTetromino();
+          currentTetromino.x--;
+
+          // update lines
+          for (let i = 0; i < 4; i++) {
+            currentTetromino.lines[i] <<= 1;
+          }
+          let collision = checkCollision();
+          // if collision, restore
+          if (collision) {
+            currentTetromino.lines = linesArrCopy;
+            currentTetromino.x++;
+          }
+          // merge into map
+          mergeIntoMap();
+          if (!collision) {
+            rePaintTable();
+          }
+        }
+      };
+      // move right
+      const moveRight = () => {
+        if (currentTetromino) {
+          // copy from lines
+          let linesArrCopy = [...currentTetromino.lines];
+          // clear old tetromino
+          clearOldTetromino();
+          currentTetromino.x++;
+          // update lines
+          for (let i = 0; i < 4; i++) {
+            currentTetromino.lines[i] >>= 1;
+          }
+          let collision = checkCollision();
+          // if collision, restore
+          if (collision) {
+            currentTetromino.lines = linesArrCopy;
+            currentTetromino.x--;
+          }
+          // merge into map
+          mergeIntoMap();
+          if (!collision) {
+            rePaintTable();
+          }
+        }
+      };
+      // generate tetromino
+      generateTetromino();
+      // move down every 1s
+      const timer = setInterval(() => {
+        moveDown();
+      }, 1000);
+      // listen to keyboard
+      document.addEventListener("keydown", (e) => {
+        switch (e.key) {
+          case "ArrowUp":
+            rotate();
+            break;
+          case "ArrowDown":
+            moveDown();
+            break;
+          case "ArrowLeft":
+            moveLeft();
+            break;
+          case "ArrowRight":
+            moveRight();
+            break;
+        }
+      });
+    </script>
+  </body>
+</html>
